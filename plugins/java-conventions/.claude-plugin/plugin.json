@@ -1,0 +1,8 @@
+{
+  "name": "java-conventions",
+  "description": "House style and refactor procedures for Java projects: javadoc and tests",
+  "version": "1.0.0",
+  "author": {
+    "name": "Dmitriy Iliyov"
+  }
+}

@@ -1,0 +1,14 @@
+{
+  "name": "dmitriy-iliyov-skills",
+  "description": "Reusable Claude Code skills for Java projects",
+  "owner": {
+    "name": "Dmitriy Iliyov"
+  },
+  "plugins": [
+    {
+      "name": "java-conventions",
+      "source": "./plugins/java-conventions",
+      "description": "House style and refactor procedures for Java projects"
+    }
+  ]
+}
