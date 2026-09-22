@@ -9,6 +9,11 @@
       "name": "java-conventions",
       "source": "./plugins/java-conventions",
       "description": "House style and refactor procedures for Java projects"
+    },
+    {
+      "name": "oncebox",
+      "source": "./plugins/oncebox",
+      "description": "Using the oncebox transactional outbox library in a Spring Boot application"
     }
   ]
 }

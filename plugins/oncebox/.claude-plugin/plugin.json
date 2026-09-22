@@ -1,0 +1,8 @@
+{
+  "name": "oncebox",
+  "description": "Using the oncebox transactional outbox library in a Spring Boot application",
+  "version": "1.0.0",
+  "author": {
+    "name": "Dmitriy Iliyov"
+  }
+}
