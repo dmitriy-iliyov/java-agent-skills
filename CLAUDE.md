@@ -1,4 +1,4 @@
-# claude-skills
+# java-agent-skills
 
 A Claude Code plugin marketplace. Everything in it is prose meant to be read by a model - there is no code
 to build, no tests to run and no dependencies to install.

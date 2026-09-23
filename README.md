@@ -1,4 +1,4 @@
-# claude-skills
+# java-agent-skills
 
 Skills for [Claude Code](https://code.claude.com) that carry a house style for Java and Spring projects - and
 the procedures for restoring it once a refactor has left the code ahead of its tests and comments - plus the
@@ -11,7 +11,7 @@ springdoc-openapi.
 ## Install
 
 ```
-/plugin marketplace add dmitriy-iliyov/claude-skills
+/plugin marketplace add dmitriy-iliyov/java-agent-skills
 /plugin install java-conventions@dmitriy-iliyov-skills
 /plugin install spring-conventions@dmitriy-iliyov-skills
 /plugin install oncebox@dmitriy-iliyov-skills
