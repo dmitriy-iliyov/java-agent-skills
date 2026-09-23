@@ -1,7 +1,8 @@
 # java-agent-skills
 
-A Claude Code plugin marketplace. Everything in it is prose meant to be read by a model - there is no code
-to build, no tests to run and no dependencies to install.
+Agent skills for Java projects, packaged as a Claude Code plugin marketplace. Everything in it is prose meant
+to be read by a model - there is no code to build, no tests to run and no dependencies to install. A
+`SKILL.md` is written for any agent that reads the format; only the manifests are Claude Code's.
 
 ## Layout
 
@@ -21,12 +22,22 @@ bump `/plugin update` sees nothing and the changed skill never reaches anyone wh
 
 ## What belongs here
 
-A rule that holds for Java projects in general. A rule that names a module, a type or a test of one codebase
-belongs to that codebase, under its own `.claude/skills/`.
+A rule that holds for Java projects in general, or for every Java project on one framework or library. The
+plugin is chosen by that scope:
+
+| Holds for | Plugin |
+|---|---|
+| any Java project | `java-conventions` |
+| a Spring application | `spring-conventions` |
+| the users of one library | a plugin of its own, named after the library (`oncebox`) |
+
+A Spring rule does not go into `java-conventions`, which would load it into projects with no Spring. A rule
+that names a module, a type or a test of one codebase belongs to that codebase, under its own
+`.claude/skills/`.
 
 Skills here come in three shapes, one example of each already present:
 
-- a **standard** - what the result has to look like (`javadoc-style`, `test-style`);
+- a **standard** - what the result has to look like (`javadoc-style`, `test-style`, `controller-style`);
 - a **procedure** - what to do and in what order (`javadoc-refactor`, `test-refactor`);
 - **knowledge of an external thing** - the traps of a library no model has seen (`oncebox`).
 
@@ -56,7 +67,7 @@ Prose rules, the ones the skills apply to javadoc:
 - a claim is concrete - the property name, the error as it is printed, the command as it is run;
 - a rule that is a judgement says so instead of being dressed as a law.
 
-That last one holds for this file too. Every skill here states that breaking one of its rules is "either
+That last one holds for this file too. Every standard here states that breaking one of its rules is "either
 wrong, or a reason to change the rule here deliberately".
 
 ## Commits
@@ -77,4 +88,4 @@ The body is prose wrapped like everything else: what was wrong before, what the 
 the obvious alternative was not taken. It names the types it touched, and its last paragraph accounts for
 what moved with them - tests, docs, comments.
 
-The two commits already in this repository predate the convention.
+The first two commits of this repository predate the convention.
