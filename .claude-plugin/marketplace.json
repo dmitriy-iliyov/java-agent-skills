@@ -1,6 +1,6 @@
 {
   "name": "dmitriy-iliyov-skills",
-  "description": "Reusable Claude Code skills for Java projects",
+  "description": "Reusable Claude Code skills for Java and Spring projects",
   "owner": {
     "name": "Dmitriy Iliyov"
   },
@@ -9,6 +9,11 @@
       "name": "java-conventions",
       "source": "./plugins/java-conventions",
       "description": "House style and refactor procedures for Java projects"
+    },
+    {
+      "name": "spring-conventions",
+      "source": "./plugins/spring-conventions",
+      "description": "House style for Spring applications: REST controllers, error responses and Swagger docs"
     },
     {
       "name": "oncebox",

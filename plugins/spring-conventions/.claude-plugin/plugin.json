@@ -1,0 +1,8 @@
+{
+  "name": "spring-conventions",
+  "description": "House style for Spring applications: REST controllers, error responses and Swagger docs",
+  "version": "1.0.0",
+  "author": {
+    "name": "Dmitriy Iliyov"
+  }
+}
