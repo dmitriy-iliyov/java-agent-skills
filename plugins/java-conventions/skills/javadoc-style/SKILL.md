@@ -1,6 +1,6 @@
 ---
 name: javadoc-style
-description: The javadoc style for a Java project - what earns a comment and what never does, where a type, method or constructor gets one and where nothing goes at all, and the formatting rules. Load it before writing or rewriting javadoc, and whenever judging whether an existing comment is worth its place. The procedure for auditing existing javadoc against the code it describes is the separate `javadoc-refactor` skill.
+description: Load it before writing or rewriting any javadoc or comment in Java code - on a new type, method or constructor, on a helper added while fixing a bug, on a record or an event - and whenever judging whether an existing comment is worth its place. Holds the javadoc style for a Java project - what earns a comment and what never does, where a type, method or constructor gets one and where nothing goes at all, and the formatting rules. Not for auditing existing javadoc against the code it describes - that is the separate `javadoc-refactor` skill.
 ---
 
 # Javadoc style

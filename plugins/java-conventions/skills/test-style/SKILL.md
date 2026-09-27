@@ -1,6 +1,6 @@
 ---
 name: test-style
-description: The testing style for a Java project - how tests are named, what each of the three levels (UT/IT/CT) is responsible for, what may be mocked and what may not, and what has to be asserted at each level. Load it before writing or rewriting a test, and whenever judging whether an existing test still follows the house style. The procedure for bringing a module's tests back to green after a refactor is the separate `test-refactor` skill.
+description: Load it before creating or editing any file under `src/test` - a new test class, one test method added to an existing class, a regression test written as part of a bug fix, a test changed to follow a production change - and whenever judging whether an existing test follows the house style. Holds the testing style for a Java project - how tests are named (`*UnitTest`, `*IntegrationTest`, `*ComponentTest`), what each of the three levels (UT/IT/CT) is responsible for, what may be mocked and what may not, what has to be asserted at each level, and what to do with a bug a test has found. Not for bringing a module's tests back to green after a refactor - that is the separate `test-refactor` skill.
 ---
 
 # Test style
