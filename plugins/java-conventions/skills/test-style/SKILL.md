@@ -167,6 +167,34 @@ what is cleaned between cases is the state, not the engine.
 **CT:** the scenarios that cannot be assembled out of UTs - the whole request path, a repeat under the same
 key, a bypass on a non-idempotent endpoint, a missing header, an error response.
 
+## Where an expectation comes from
+
+A test asserts the contract, read from three sources:
+
+- **the javadoc** - what the type and the method promise, including to callers that do not exist yet;
+- **the project's design record** (an architecture section, a decisions log, ADRs, the agent instructions -
+  whatever the project keeps its settled decisions and invariants in) - often stricter than the javadoc,
+  since it states what the construction relies on;
+- **the call sites** - what the callers inside the project depend on: which `null` they survive, which
+  exception they catch, what they make of an empty result.
+
+The body of the method under test is a source only for its mechanical branches - a `null` or empty input
+answered with an early return, a `requireNonNull`, a sane fallback or normalization: the javadoc is not
+obliged to retell them, so the body is their contract unless a source above says otherwise. A branch of
+business logic - one that decides the outcome, the status, what is stored or which exception is thrown - is
+never read off the body: an expectation taken from it asserts the code against itself.
+
+A situation is a case only when the code decides something there or a source promises something there.
+Where the code has no branch and no source says a word - an exception that simply propagates, the wording of
+a message nobody specified - there is nothing to assert and nothing to list. Where a source promises what the
+code has no branch for, it is a case all the same, and a red one.
+
+The sources are not merged. A call site shows what a caller needs, not what the contract allows, and may
+lean on a defect; the javadoc may promise more than anyone uses, and that part is contract all the same.
+Where the sources agree, the case is asserted. Where they disagree or all stay silent, the case is listed in
+the report - *sources disagree*, with what each one says, or *inferred*, with the reading it rests on - and
+asserted only once the operator decides.
+
 ## Tests and bugs that were found
 
 Three rules. The first two look like opposites and are not: one is about a test that asserts the defect, the
