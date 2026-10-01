@@ -32,7 +32,7 @@ sit above the mapping annotation in the order `@Operation`, `@ApiResponses`, `@X
 @Operation(summary = "Delete order by id")
 @ApiResponses({
         @ApiResponse(responseCode = "204", description = "Order successfully deleted"),
-        @ApiResponse(responseCode = "404", description = "Order not found", content = @Content)
+        @ApiResponse(responseCode = "404", description = "Order not found")
 })
 @DeleteMapping("/{id}")
 @ResponseStatus(HttpStatus.NO_CONTENT)
@@ -105,10 +105,43 @@ content = @Content(array = @ArraySchema(schema = @Schema(implementation = Order.
 content = @Content(schema = @Schema(implementation = Long.class))                         // a scalar
 ```
 
-**Every response that is not the body of the method carries `content = @Content`** - an error response, and a
-`204` of a method whose return type is not `void`. With no `content` at all springdoc fills it in from the
-return type, so a `404` over `Order get(...)` is documented as returning an `Order`; the empty `@Content`, as in
-the example above, keeps it empty.
+**A `4xx` response carries no `content`**: an `OperationCustomizer` in the application's OpenAPI configuration puts
+the error schema (`Problem`, `application/problem+json`) on every `4xx` response, replacing whatever springdoc
+inferred, so a `404` over `Order get(...)` is not documented as returning an `Order`. The annotation states the code
+and the description only.
+
+**Where no `OperationCustomizer` can be written, or should not be** - a library or a starter, which cannot count on
+the host application's configuration and must not change its documentation - each `4xx` states its body itself, the
+one case where an error response carries `content`:
+
+```java
+@ApiResponse(
+        responseCode = "404",
+        description = "Event not found",
+        content = @Content(
+                mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
+                schema = @Schema(implementation = DlqProblem.class)
+        )
+)
+```
+
+- The schema is a record that exists for the document only, its components the keys of the real body: springdoc does
+  not see Jackson's mixin that lifts `ProblemDetail.properties` to the top level and would document a `properties`
+  object the body lacks. A component absent from some answers (`errors`, a `field` of a violation of the whole
+  request) is `NOT_REQUIRED`.
+- The record and its nested records carry the library's own prefix (`DlqProblem`, `DlqFieldError`), never `Problem`
+  or `FieldError`: schema names are global to the document and the host may have its own.
+- A unit test serialises the real `ProblemDetail` through `Jackson2ObjectMapperBuilder.json().build()` (it applies
+  the mixin) and compares its keys with the record components - nothing else holds the two together.
+- No `examples` per response: they would repeat `type`, `title` and `status` of the error factory as constants no one
+  derives from it. The cost is that Swagger UI shows the record's `@Schema(example = ...)` under every code, so keep
+  it to the commonest error and accept a validation failure shown under a `409`.
+
+A host with a customizer replaces this `content` with its own. Leaving it out is no option for a library: a host
+without one would document a `404` as returning the success body.
+
+**A `2xx` that is not the body of the method carries `content = @Content`** - a `204` of a method whose return type is
+not `void`. With no `content` at all springdoc fills it in from the return type; the empty `@Content` keeps it empty.
 
 ## Fields
 
@@ -234,7 +267,8 @@ Compare against the code:
 - each 2xx code against `@ResponseStatus` or its absence ([Responses](#responses));
 - `required` against `requiredMode` and `@NotNull`; `minimum` / `maximum` / `maxItems` against the validation
   annotations ([Fields](#fields));
-- no `content` on an error response - an `Order` under a `404` ([Responses](#responses));
+- the error schema, not an `Order`, under a `404`; no `content` written on a `4xx`, except in a library without a
+  customizer, where it is the record ([Responses](#responses));
 - no property that is not a record component (`valid`), no query parameter of type `object`, no parameter the
   client does not send (`clientIp`, `user`), an `encoding` on every JSON part ([Traps](#traps));
 - every summary and description read as text. A rename by the IDE or by search-and-replace rewrites the word
