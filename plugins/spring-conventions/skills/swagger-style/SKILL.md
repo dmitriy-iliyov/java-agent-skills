@@ -134,9 +134,12 @@ exists in the enum, a collection no larger than its `@Size`.
 **`requiredMode` is stated on every component, a primitive included** - a primitive without it is rendered as
 optional, and the caller cannot tell whether `pageSize` may be left out. `REQUIRED` goes with `@NotNull` /
 `@NotBlank` / `@NotEmpty` on a reference type; the two say the same thing and must not disagree. A primitive
-carries none of them, so its type's default (`0`, `false`) decides: `REQUIRED` where the default fails the
-component's own constraints (`pageSize` under `@Min(10)`), `NOT_REQUIRED` where it passes (`page` under
-`@Min(0)`).
+carries none of them, so what an absent value turns into decides, and that depends on how the record is bound:
+
+| Bound through | An absent primitive | `requiredMode` |
+|---|---|---|
+| `@ModelAttribute` - query parameters | fails the binding: a record is built through its constructor, which has no value to pass, and the answer is a `400` before any constraint runs | `REQUIRED`, whatever the constraints - `page` under `@Min(0)` included |
+| `@RequestBody` - a JSON body | becomes its type's default (`0`, `false`) - Jackson with Spring Boot's defaults does the same for an explicit `null` | `REQUIRED` where the default fails the component's own constraints (`pageSize` under `@Min(10)`), `NOT_REQUIRED` where it passes (`page` under `@Min(0)`) |
 
 **A numeric bound in `@Schema` repeats the validation annotation exactly** - `minimum` / `maximum` with `@Min` /
 `@Max`. Not on a collection: `maximum` is a numeric keyword and on a `Set` or a `List` gives a client nothing to
