@@ -80,23 +80,25 @@ The interface is in the same package, named for the controller without its suffi
 **A task that only adds an endpoint to a controller that qualifies but still carries its annotations does not migrate
 it.** The migration is a change of its own, and it needs the tests below. The new method is annotated like its
 neighbours, on the controller, and the report says that the controller qualifies for an `<X>Api` interface and, by
-the check below, whether it could move today: which constrained parameters have no case that answers `400` without
-them.
+the check below, whether it could move today: whether the controller has tests of its own.
 
 **The constraints go to the interface because they cannot stay**: Hibernate Validator refuses an overriding method that
 declares parameter constraints or `@Valid` of its own (HV000151), whether or not the interface repeats them. Spring MVC
 and springdoc read parameter annotations from both, so `@PathVariable` on the class and `@UUIDv7` on the interface
 describe one parameter. The parameter list is therefore written twice, and a change of signature touches both files.
 
-**Before moving a controller, check that its validation has tests - and stop if it has none.** Dropping a constraint in
-the move fails nothing: HV000151 only catches a constraint left on the controller, one that disappears simply stops
-validating, and the suite stays green. So for every parameter that carries `@Valid` or a constraint the controller's
-tests need a case that answers `400` without it - an invalid id, an invalid payload, an unknown sort. If the controller
-has no tests, or a constrained parameter has no such case, **do not move it**: report which controller and which
-parameters are unprotected and ask whether to write the missing cases first (the `test-style` skill). A case counts
-only if it goes red when its constraint is removed from the interface. With the cases in place, list the constraints
-before the move and compare with the interface after - the same set with the same message text - then compare
-`/v3/api-docs` ([Checking the result](#checking-the-result)).
+**Before moving a controller, check that it has tests - and stop if it has none.** The move rewrites every method
+signature, and only the controller's own tests (an `*IntegrationTest` over its endpoints) show that each endpoint still
+answers as before. If the controller has none, **do not move it**: report which controller has no tests and ask whether
+to write them first (the `test-style` skill).
+
+**Whether each constraint has a case of its own is checked only on the operator's word.** Dropping a constraint in the
+move fails nothing: HV000151 only catches a constraint left on the controller, one that disappears simply stops
+validating, and the suite stays green. Proving that every `@Valid` and every constraint has a case that answers `400`
+without it means removing them one by one and running the tests each time - a run per constraint, which across a
+project is hours. So it is not done by default: ask the operator whether it is wanted, and for which controllers. What
+is always done instead is the comparison - list the constraints before the move and compare with the interface after,
+the same set with the same message text, then compare `/v3/api-docs` ([Checking the result](#checking-the-result)).
 
 ```java
 public interface ReviewApi {
