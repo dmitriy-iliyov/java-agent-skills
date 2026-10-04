@@ -1,17 +1,19 @@
 ---
 name: oncebox
-description: Publishing events reliably from a Spring Boot service - an outbox table polled and published to Kafka or RabbitMQ, at-least-once delivery, per-type retries and backoff, a DLQ, recovery of events stuck mid-send, and deduplication of redelivered messages on the consumer. Load it before writing any of that by hand: the `oncebox` library implements it. Also load it when `oncebox-starter` is in the build file, when a context fails to start with `sender cannot be null` or `cacheName cannot be null`, when outbox pollers deadlock on MySQL, or when a consumer silently skips events that another service consumed. Not for log-based CDC (Debezium), not where the order of events has to be guaranteed, and not for idempotency of client requests carrying an `Idempotency-Key` - that is a caller's repeat, not a broker's redelivery.
+description: Publishing events reliably from a Spring Boot service - an outbox table polled and published to Kafka or RabbitMQ, at-least-once delivery, per-type retries and backoff, a DLQ, recovery of events stuck mid-send, and deduplication of redelivered messages through an inbox on the receiving side. Load it before writing any of that by hand: the `oncebox` library implements it. Also load it when `oncebox-starter` is in the build file, when a context fails to start with `'sender' cannot be null` or `'cache-name' cannot be null`, when outbox pollers deadlock on MySQL, or when a service silently skips events that another service consumed. Not for log-based CDC (Debezium), not where the order of events has to be guaranteed, and not for idempotency of client requests carrying an `Idempotency-Key` - that is a caller's repeat, not a broker's redelivery.
 ---
 
 # oncebox
 
-On Maven Central under `io.github.dmitriy-iliyov`, current version `1.1.2`. Events are written in the business
-transaction and a background worker polls them out of the table.
+On Maven Central under `io.github.dmitriy-iliyov`, current version `1.1.2`. A service gets two mechanisms, used
+together or apart: the **outbox** writes events in the business transaction and a background worker polls them out
+of the table to the broker; the **inbox** records the ids of consumed events in the handler's transaction, so a
+redelivered event is skipped.
 
-**Do not write the poller by hand.** The state machine, per-type retries with backoff, the DLQ, recovery of
-events stuck in `IN_PROCESS`, cleanup of processed rows, the idempotent consumer and the Micrometer metrics are
-all in the library. A hand-rolled version reproduces about a tenth of that and gets the `SKIP LOCKED` polling
-wrong on the first concurrent instance.
+**Do not write the poller or the deduplication by hand.** The state machine, per-type retries with backoff, the
+DLQ, recovery of events stuck in `IN_PROCESS`, cleanup of processed rows, the idempotent consumer and the
+Micrometer metrics are all in the library. A hand-rolled version reproduces about a tenth of that and gets the
+`SKIP LOCKED` polling wrong on the first concurrent instance.
 
 ## When it does not fit
 
@@ -25,83 +27,93 @@ Say so instead of bending the library around it:
 
 ## The minimal working set
 
-Three dependencies, never fewer - `oncebox-starter` **plus exactly one dialect plus exactly one transport**:
+`oncebox-starter` **plus exactly one dialect**, and on the outbox side **plus exactly one transport**:
 
 | Kind | Modules | Required |
 |---|---|---|
-| Starter | `oncebox-starter` | always, on both sides |
-| Dialect | `oncebox-postgresql` / `oncebox-mysql` / `oncebox-oracle` | exactly one, on both sides |
-| Transport | `oncebox-kafka` / `oncebox-rabbit` | exactly one, publisher side |
-| Optional | `oncebox-metrics`, `oncebox-dlq-api`, `oncebox-consumer-cache` | - |
+| Starter | `oncebox-starter` | always, outbox and inbox |
+| Dialect | `oncebox-postgresql` / `oncebox-mysql` / `oncebox-oracle` | exactly one, outbox and inbox |
+| Transport | `oncebox-kafka` / `oncebox-rabbit` | exactly one, outbox side |
+| Optional | `oncebox-metrics`, `oncebox-dlq-api`, `oncebox-inbox-cache` | - |
 
-Then `@EnableOutbox` on the main class, and `OutboxPublisher#publish(eventType, payload)` **inside the business
-`@Transactional` method** - or `@OutboxPublish(eventType = "...")` on it, which takes the method result as the
-payload. Atomicity is the whole point: a publish outside the transaction buys nothing over sending to the broker
-directly.
+Then `@EnableOncebox` on the main class.
 
-The library creates its tables (`oncebox.tables.auto-create`, default `true`). No `CREATE TABLE` or Flyway
-migration is written for `outbox_events`, `outbox_jobs`, `outbox_dlq_events` or `outbox_consumed_events`.
+**Outbox:** `OutboxPublisher#publish(eventType, payload)` **inside the business `@Transactional` method** - or
+`@OutboxPublish(eventType = "...")` on it, which takes the method result as the payload. Atomicity is the whole
+point: a publish outside the transaction buys nothing over sending to the broker directly.
+
+**Inbox:** `IdempotentConsumer#consume(...)` inside the listener, with the event id taken from the message by
+`OnceboxHeadersUtils::extractId` (the `oncebox_event_id` header the outbox writes). The business operation runs
+in the same transaction as the id record; a redelivered id skips it.
+
+The library creates its tables (`oncebox.tables.auto-create`, default `true`) - only the ones the enabled
+features use. No `CREATE TABLE` or Flyway migration is written for `outbox_events`, `outbox_dlq_events`,
+`inbox_events` or `oncebox_jobs`.
 
 ## The traps
 
-A `publisher:` or `cache:` block that is present with `enabled` unset counts as **on**; an absent `cache:` block
-means off. Two of the traps below follow from that.
+An `oncebox.outbox` or `oncebox.inbox.cache` block that is present with `enabled` unset counts as **on**; an absent
+block means off. `oncebox.inbox` itself is the exception: it is on only with `enabled: true`. Two of the traps
+below follow from that.
 
 ### Fails at startup
 
 **A starter with no dialect.** `oncebox-starter` bundles none, so there is no DAO to wire and the context fails
 to start - with an error that does not name the missing module.
 
-**A `publisher:` block on the consumer side.** The context dies on `sender cannot be null` or
-`events cannot be null`. A consumer-only service writes `oncebox.publisher.enabled: false`.
+**An `outbox` block in an inbox-only service.** The context dies on `'sender' cannot be null`. An inbox-only
+service either leaves the `outbox` block out or writes `oncebox.outbox.enabled: false`.
 
-**`consumer.cache.enabled: true` with no `cache-name`.** A `requireNonNull`: `cacheName cannot be null`. The name
-must also match a cache in a `CacheManager` bean the application provides, and `oncebox-consumer-cache` has to be
-on the classpath.
+**An `inbox.cache` block with no `cache-name`.** The context dies on `'cache-name' cannot be null`. The name must
+also match a cache in a `CacheManager` bean the application provides, and `oncebox-inbox-cache` has to be on the
+classpath.
 
 ### Wrong behaviour, no error
 
 **MySQL under the default `REPEATABLE READ`.** The polling query takes next-key (gap) locks, so concurrent
-instances deadlock instead of each taking a disjoint batch. Run the outbox datasource at `READ COMMITTED` - a
-poller never needs repeatable reads. PostgreSQL and Oracle are unaffected.
+instances deadlock instead of each taking a disjoint batch. Run the datasource at `READ COMMITTED` - a poller
+never needs repeatable reads. PostgreSQL and Oracle are unaffected.
 
-**A missing `cache:` block on the consumer.** Every idempotency check then hits the database, with a warning in
-the log and nothing else.
+**A missing `cache:` block in the inbox.** Every idempotency check then hits the database, with a warning in the
+log and nothing else.
 
 **One `cache-name` shared by several services.** The cache key is the event id alone, and a hit skips the
 operation without reaching the database. Services consuming the same event from one store (one Redis) under one
 name see each other's entries: the first to consume an event marks it for all, and the rest skip it silently -
 the event is lost for them, not duplicated. The name carries the service -
-`cache-name: "<service-name>:oncebox:consumed"`, never the bare `oncebox:consumed` of older examples; a separate
+`cache-name: "<service-name>:oncebox:inbox"`, never a bare `oncebox:inbox`; a separate
 `spring.cache.redis.key-prefix` or a separate store per service works as well.
 
 **The DLQ is disabled by default.** Events that exhaust their retries go nowhere until
-`oncebox.publisher.dlq.enabled` is set.
+`oncebox.outbox.dlq.enabled` is set.
 
-**A broker with no acks.** At-least-once rests on the publisher waiting for the broker's acknowledgement, and the
-library does not configure the broker: without `acks` (or the equivalent) the guarantee is not there, whatever the
-outbox does.
+**A broker with no acks.** At-least-once rests on the outbox waiting for the broker's acknowledgement, and the
+library does not configure the broker. It only warns: on a Kafka producer without `acks=all`, and on a
+`RabbitTemplate` without `mandatory=true`. Without them the guarantee is not there, whatever the outbox does.
 
-**A thread pool sized for one event type.** A publisher needs `4 + n` threads - four background jobs (stuck
-recovery, cleanup, DLQ transfer, DLQ cleanup) plus one per event type; a consumer needs `1`. The default is
-`min(available_processors, 5)`, so a publisher with several event types starves silently. Set
+**A thread pool sized for one event type.** The outbox needs `2 + n` threads - stuck recovery and cleanup plus one
+per event type - and `5 + n` with the DLQ (transfer to, transfer from, DLQ cleanup); the inbox needs `1`. The
+default is `min(available_processors, 5)`, so an outbox with several event types starves silently. Set
 `oncebox.thread-pool-size`.
 
 **Listeners on the wrong container factory.** The idempotent consumer needs
-`containerFactory = "outboxKafkaListenerContainerFactory"` or `"outboxRabbitListenerContainerFactory"`, whose
-message converter resolves the payload class from the event-type header through `oncebox.consumer.mappings`; on
+`containerFactory = "inboxKafkaListenerContainerFactory"` or `"inboxRabbitListenerContainerFactory"`, whose
+message converter resolves the payload class from the event-type header through `oncebox.inbox.mappings`; on
 Spring's default factory the payload arrives untyped.
 
-**Kafka acknowledging automatically.** Unless `spring.kafka.listener.ack-mode=manual` (or `manual_immediate`) is
-set, the consumer container warns and carries on - and an offset committed before the business operation ran
-turns at-least-once into at-most-once.
+**Kafka committing offsets before processing.** The default `AckMode` (`BATCH`) commits only after the listener
+returns, so `ack-mode=manual` is not needed and only moves the commit into user code. What breaks at-least-once is
+`enable.auto.commit=true` - the client commits on a timer, before the event is processed; the starter warns about
+it. And the default `DefaultErrorHandler` commits a record that exhausted its retries, whatever the `AckMode`:
+without a recoverer (a `DeadLetterPublishingRecoverer`, say) that event is gone.
 
-**Consumer mappings keyed differently from the publisher.** The keys of `oncebox.consumer.mappings` (event type
-to payload class) have to be exactly the event types the publisher was configured with and publishes under.
+**Inbox mappings keyed differently from the outbox.** The keys of `oncebox.inbox.mappings` (event type to payload
+class) have to be exactly the event types the outbox was configured with and publishes under.
 
 ## Configuration
 
 The full reference is the project README, https://github.com/dmitriy-iliyov/oncebox - link it rather than
-restating it. By section: publisher polling and backoff, `stuck-recovery`, `clean-up`, `dlq`, the consumer's
-`source`, `mappings`, `cache`, and the global `thread-pool-size` and `distributed-lock`. Read the relevant one
-rather than guessing a property name - unknown keys under `oncebox` are not rejected, they are ignored.
+restating it. By section: the outbox's `sender`, polling and backoff, `stuck-recovery`, `clean-up` and `dlq`; the
+inbox's `source`, `mappings`, `clean-up` and `cache`; and the global `thread-pool-size` and `distributed-lock`.
+Read the relevant one rather than guessing a property name - unknown keys under `oncebox` are not rejected, they
+are ignored.
