@@ -1,6 +1,6 @@
 ---
 name: swagger-style
-description: The house style for springdoc-openapi annotations on a Spring REST controller and its DTOs - `@Operation`, `@ApiResponses`, `@Parameter`, `@Schema`, `@ParameterObject`. Load it before adding or changing `io.swagger.v3.oas.annotations` on a controller, a record or an enum, when a new endpoint is added to an annotated controller, when checking `/v3/api-docs` or Swagger UI against the code, and when Swagger UI documents an error as returning the success body, shows a `@ModelAttribute` filter as one object parameter, asks for a parameter the server fills in itself, answers 415 on a multipart "Try it out", or drops enum descriptions. Not for javadoc (the separate `javadoc-style` skill), and not for designing paths, statuses or error responses - those are the `controller-style` and `controller-advice-style` skills, taken as given here.
+description: The house style for springdoc-openapi annotations on a Spring REST controller and its DTOs - `@Operation`, `@ApiResponses`, `@Parameter`, `@Schema`, `@ParameterObject`. Load it before adding or changing `io.swagger.v3.oas.annotations` on a controller, a record or an enum, when a task adds or changes any endpoint of a controller that already carries `@Operation` / `@ApiResponses` - even if the task never mentions documentation, the new method has to be annotated like its neighbours - when the annotations of a controller bury its signatures and bodies, when moving a controller's annotations to an `<X>Api` interface, when checking `/v3/api-docs` or Swagger UI against the code, and when Swagger UI documents an error as returning the success body, shows a `@ModelAttribute` filter as one object parameter, asks for a parameter the server fills in itself, answers 415 on a multipart "Try it out", or drops enum descriptions. Not for javadoc (the separate `javadoc-style` skill), and not for designing paths, statuses or error responses - those are the `controller-style` and `controller-advice-style` skills, taken as given here.
 ---
 
 # Swagger style
@@ -18,8 +18,8 @@ error response carries follow the `controller-advice-style` skill
 
 | Where | What it carries |
 |---|---|
-| **Endpoint method** | `@Operation(summary = ...)` and `@ApiResponses` - see [Responses](#responses) for which codes |
-| **Path variable, query parameter** | `@Parameter(description = ...)`; a path variable also `required = true` |
+| **Endpoint method** | `@Operation(summary = ...)` and `@ApiResponses` - see [Responses](#responses) for which codes; on the `<X>Api` interface where the controller has one - see [Where the annotations live](#where-the-annotations-live) |
+| **Path variable, query parameter** | `@Parameter(description = ...)`; a path variable also `required = true` (on the interface parameter, as above) |
 | **Request / response record** | `@Schema(description = ...)` on the type and on every component - see [Fields](#fields) |
 | **Enum used in a request or response** | `@Schema(description = ..., enumAsRef = true)` on the type, nothing on the constants - see [Fields](#fields) |
 | **Query parameters bound through `@ModelAttribute`** | `@ParameterObject` on the method parameter - see [Traps](#traps) |
@@ -38,6 +38,88 @@ sit above the mapping annotation in the order `@Operation`, `@ApiResponses`, `@X
 @ResponseStatus(HttpStatus.NO_CONTENT)
 public void delete(@Parameter(description = "Id of the order to delete", required = true)
                    @PathVariable("id") UUID id) {
+```
+
+## Where the annotations live
+
+**On the controller method, while it stays readable at a glance** - the signature and the body are what the eye finds
+first, the annotations above them are a few short lines, and the parameter list is short too: here one parameter under
+one short annotation:
+
+```java
+@Operation(summary = "Get own profile")
+@ApiResponses({
+        @ApiResponse(responseCode = "200", description = "Profile successfully retrieved"),
+        @ApiResponse(responseCode = "401", description = "Caller is not authenticated"),
+        @ApiResponse(responseCode = "403", description = "Caller has no completed profile")
+})
+@GetMapping
+public BasePrivateResponseDto get(@AuthenticationPrincipal PrincipalDetails principal) {
+```
+
+**A controller with even one method that cannot be read like that moves all its annotations to an interface** - the
+controller as a whole, never a mix of annotated methods and bare ones. A method is past the line when the annotations
+bury the signature: a `javadoc`, an `@Operation`, `@ApiResponses` with a `content` of `oneOf` or an array, a Swagger
+`@RequestBody` with an `encoding`, and only then the mapping and the parameters. The judgement is the eye's, not a
+count; the signals are a multipart `encoding` block, a `content` spanning several lines, five or more responses, a
+parameter carrying a `@Parameter` over its binding and its constraint. The parameters count as much as the response
+block: a short `@ApiResponses` over a method with several parameters, each under its own `@Parameter`, binding and
+constraint, is past the line as well - the readable example above is readable because it has one parameter and that one
+carries a single short annotation.
+
+The interface is in the same package, named for the controller without its suffix plus `Api` -
+`ReviewController implements ReviewApi` - and springdoc reads it with no configuration.
+
+| On the interface | On the controller |
+|---|---|
+| `@Operation`, `@ApiResponses`, the Swagger `@RequestBody` with the multipart `encoding` | the mapping annotations, `@ResponseStatus` |
+| `@Parameter`, `@ParameterObject` | `@PreAuthorize` |
+| the parameter constraints: `@Valid`, `@UUIDv7`, `@Positive`, `@Pattern` | the binding: `@PathVariable("id")`, `@RequestParam`, `@RequestPart`, `@ModelAttribute`, `@AuthenticationPrincipal` |
+| | the body: one call to the service |
+
+**A task that only adds an endpoint to a controller that qualifies but still carries its annotations does not migrate
+it.** The migration is a change of its own, and it needs the tests below. The new method is annotated like its
+neighbours, on the controller, and the report says that the controller qualifies for an `<X>Api` interface and, by
+the check below, whether it could move today: which constrained parameters have no case that answers `400` without
+them.
+
+**The constraints go to the interface because they cannot stay**: Hibernate Validator refuses an overriding method that
+declares parameter constraints or `@Valid` of its own (HV000151), whether or not the interface repeats them. Spring MVC
+and springdoc read parameter annotations from both, so `@PathVariable` on the class and `@UUIDv7` on the interface
+describe one parameter. The parameter list is therefore written twice, and a change of signature touches both files.
+
+**Before moving a controller, check that its validation has tests - and stop if it has none.** Dropping a constraint in
+the move fails nothing: HV000151 only catches a constraint left on the controller, one that disappears simply stops
+validating, and the suite stays green. So for every parameter that carries `@Valid` or a constraint the controller's
+tests need a case that answers `400` without it - an invalid id, an invalid payload, an unknown sort. If the controller
+has no tests, or a constrained parameter has no such case, **do not move it**: report which controller and which
+parameters are unprotected and ask whether to write the missing cases first (the `test-style` skill). A case counts
+only if it goes red when its constraint is removed from the interface. With the cases in place, list the constraints
+before the move and compare with the interface after - the same set with the same message text - then compare
+`/v3/api-docs` ([Checking the result](#checking-the-result)).
+
+```java
+public interface ReviewApi {
+
+    @Operation(summary = "Delete own review by id")
+    @ApiResponses({
+            @ApiResponse(responseCode = "204", description = "Review successfully deleted"),
+            @ApiResponse(responseCode = "404", description = "Review not found")
+    })
+    void delete(PrincipalDetails principal,
+                @Parameter(description = "Id of the review", required = true)
+                @UUIDv7(paramName = "id", message = "Id should have valid format.") String id);
+}
+
+@RestController
+public class ReviewController implements ReviewApi {
+
+    @PreAuthorize("hasAnyRole('USER', 'SPECIALIST')")
+    @DeleteMapping("/{id}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    @Override
+    public void delete(@AuthenticationPrincipal PrincipalDetails principal,
+                       @PathVariable("id") String id) {
 ```
 
 ## Wording
@@ -252,6 +334,12 @@ encoding goes in a Swagger `@RequestBody`, fully qualified next to Spring's, aft
 
 A file part (`MultipartFile`) needs no encoding - it is rendered as `format: binary` and sent with the file's type.
 
+**A controller that implements an interface is not found without class proxies.** With a bare `@EnableMethodSecurity`
+the controller is proxied through its interface (a JDK proxy), the proxy loses `@RestController` and `@RequestMapping`
+on its type, and every request to it answers `404`. Spring Boot's `AopAutoConfiguration` hides it by forcing class
+proxies; a `@WebMvcTest` has no such auto-configuration. So `@EnableMethodSecurity(proxyTargetClass = true)` goes in the
+application's configuration and in every slice configuration, instead of relying on the default.
+
 ## Checking the result
 
 Nothing compiles or tests the annotations, so the result is checked in the generated document, not only in the
@@ -262,6 +350,11 @@ straight from swagger-core:
 Json.pretty(ModelConverters.getInstance(true).readAll(OrderFilter.class).get("OrderFilter"))
 ```
 
+Where the application cannot be started (no database, no keystore), a throwaway `@WebMvcTest` that loads springdoc,
+`GET`s `/v3/api-docs` and writes the JSON with its keys sorted gives the same document: dump it before the change and
+after, diff the two files, delete the test. A moved controller whose document was not compared is reported as not
+checked, never as unchanged.
+
 Compare against the code:
 
 - each 2xx code against `@ResponseStatus` or its absence ([Responses](#responses));
@@ -271,6 +364,8 @@ Compare against the code:
   customizer, where it is the record ([Responses](#responses));
 - no property that is not a record component (`valid`), no query parameter of type `object`, no parameter the
   client does not send (`clientIp`, `user`), an `encoding` on every JSON part ([Traps](#traps));
+- a controller moved to an `<X>Api` interface: `/v3/api-docs` before and after must be identical, and the constraints
+  before and after the same ([Where the annotations live](#where-the-annotations-live));
 - every summary and description read as text. A rename by the IDE or by search-and-replace rewrites the word
   inside the strings too - `count` to `countActive` turns `Customer to count orders for` into `Customer to
   countActive orders for` - and a summary with a missing bracket renders as it is.

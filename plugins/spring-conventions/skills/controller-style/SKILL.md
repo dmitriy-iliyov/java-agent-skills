@@ -1,12 +1,16 @@
 ---
 name: controller-style
-description: Load it before writing or changing a Spring MVC REST controller or anything it binds - an endpoint, a URL, an HTTP verb or response status, a `@PreAuthorize` rule, a `@RequestBody` / request record or one of its `@Valid` constraints (`@Size`, `@NotBlank`), path variables and query parameters, a `@ModelAttribute` filter, a multipart `@RequestPart`, `@AuthenticationPrincipal` - also when the change is one line inside a bug fix, and when judging whether a controller is thin enough or should return a body or a `ResponseEntity`. Holds the house style for `@RestController`, `@RequestMapping`, `@GetMapping` / `@PostMapping`. Not for exception handling and error responses (the separate `controller-advice-style` skill), not for Swagger annotations (the separate `swagger-style` skill), not for the service layer, and not for server-side rendering with views.
+description: Load it before writing or changing a Spring MVC REST controller or anything it binds - an endpoint, a URL, an HTTP verb or response status, a `@PreAuthorize` rule, a `@RequestBody` / request record or one of its `@Valid` constraints (`@Size`, `@NotBlank`), path variables and query parameters, a `@ModelAttribute` filter, a multipart `@RequestPart`, `@AuthenticationPrincipal` - also when the change is one line inside a bug fix, and when judging whether a controller is thin enough or should return a body or a `ResponseEntity`. Every endpoint it adds or changes also falls under the `swagger-style` skill: load that one too, before writing the method. Holds the house style for `@RestController`, `@RequestMapping`, `@GetMapping` / `@PostMapping`. Not for exception handling and error responses (the separate `controller-advice-style` skill), not for Swagger annotations (the separate `swagger-style` skill), not for the service layer, and not for server-side rendering with views.
 ---
 
 # Controller style
 
 House rules for Spring MVC controllers. A controller that breaks one of them is either wrong, or a reason to
 change the rule here deliberately.
+
+**Adding or changing an endpoint is also a `swagger-style` task, whatever the request says.** An endpoint of this project
+carries its documentation, and `swagger-style` decides where it lives - on the method, or on an `<X>Api` interface
+the controller has to move to. Load it before writing the method; it holds a stop point that this skill does not.
 
 [Any controller](#any-controller) holds for every controller, [REST](#rest) for `@RestController` and
 `@RestControllerAdvice` only; a `@Controller` returning a view follows the first part and nothing more is settled
@@ -95,6 +99,11 @@ silently the day a role is added, and its holders cannot even log out. `hasAnyRo
 
 **Input is validated by annotations, not by code** - `@Valid` on the `@RequestBody` or `@ModelAttribute` record,
 constraints on its components.
+
+**Where the controller implements an `<X>Api` interface** (see `swagger-style`,
+[Where the annotations live](../swagger-style/SKILL.md#where-the-annotations-live)), the `@Valid` and the constraints
+on its parameters sit on the interface's parameters, not on the controller's: Hibernate Validator rejects an
+overriding method that declares its own (HV000151). The binding annotations and `@PreAuthorize` stay on the controller.
 
 **A rule across fields is a class-level constraint, reported on every field it involves**, so that `errors` (see
 `controller-advice-style`) names fields the client sent:
