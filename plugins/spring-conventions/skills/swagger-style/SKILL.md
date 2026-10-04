@@ -97,8 +97,12 @@ move fails nothing: HV000151 only catches a constraint left on the controller, o
 validating, and the suite stays green. Proving that every `@Valid` and every constraint has a case that answers `400`
 without it means removing them one by one and running the tests each time - a run per constraint, which across a
 project is hours. So it is not done by default: ask the operator whether it is wanted, and for which controllers. What
-is always done instead is the comparison - list the constraints before the move and compare with the interface after,
-the same set with the same message text, then compare `/v3/api-docs` ([Checking the result](#checking-the-result)).
+is always done instead is the comparison of the constraints, and it is done by a script, not by reading: every `@Valid`
+and every constraint with its arguments (`message`, `regexp`, `paramName`), whitespace collapsed, keyed by method and
+parameter and sorted - taken from the controller before the move and from the interface after. The two lists are
+diffed and must be identical. `/v3/api-docs` is compared as well ([Checking the result](#checking-the-result)), but it
+does not replace the list: `@Pattern` or `@Positive` show in the document, `@Valid` and a custom constraint such as
+`@UUIDv7` do not.
 
 ```java
 public interface ReviewApi {
@@ -366,8 +370,8 @@ Compare against the code:
   customizer, where it is the record ([Responses](#responses));
 - no property that is not a record component (`valid`), no query parameter of type `object`, no parameter the
   client does not send (`clientIp`, `user`), an `encoding` on every JSON part ([Traps](#traps));
-- a controller moved to an `<X>Api` interface: `/v3/api-docs` before and after must be identical, and the constraints
-  before and after the same ([Where the annotations live](#where-the-annotations-live));
+- a controller moved to an `<X>Api` interface: `/v3/api-docs` before and after must be identical, and the scripted
+  lists of constraints before and after the same ([Where the annotations live](#where-the-annotations-live));
 - every summary and description read as text. A rename by the IDE or by search-and-replace rewrites the word
   inside the strings too - `count` to `countActive` turns `Customer to count orders for` into `Customer to
   countActive orders for` - and a summary with a missing bracket renders as it is.
