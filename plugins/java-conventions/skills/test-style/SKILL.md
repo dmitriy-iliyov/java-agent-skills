@@ -1,6 +1,6 @@
 ---
 name: test-style
-description: Load it before creating or editing any file under `src/test` - a new test class, one test method added to an existing class, a regression test written as part of a bug fix, a test changed to follow a production change - and whenever judging whether an existing test follows the house style. Holds the testing style for a Java project - how tests are named (`*UnitTest`, `*IntegrationTest`, `*ComponentTest`), what each of the three levels (UT/IT/CT) is responsible for, what may be mocked and what may not, what has to be asserted at each level, and what to do with a bug a test has found. Not for bringing a module's tests back to green after a refactor - that is the separate `test-refactor` skill.
+description: Load it before creating or editing any file under `src/test` - a new test class, one test method added to an existing class, a regression test written as part of a bug fix, a test changed to follow a production change - and whenever judging whether an existing test follows the house style. Holds the testing style for a Java project - how tests are named (`*UnitTest`, `*IntegrationTest`, `*ComponentTest`, `*E2ETest`), what each of the four levels (UT/IT/CT/E2E) is responsible for, what may be mocked and what may not, what has to be asserted at each level, and what to do with a bug a test has found. Not for bringing a module's tests back to green after a refactor - that is the separate `test-refactor` skill.
 ---
 
 # Test style
@@ -10,13 +10,14 @@ rule here deliberately.
 
 Code, javadoc and message text are written in English.
 
-## The three levels
+## The four levels
 
 | Level | File suffix | `@DisplayName` prefix | What is alive | What is stubbed |
 |---|---|---|---|---|
 | Unit | `*UnitTest` | `UT` | one class | all of its collaborators |
 | Integration | `*IntegrationTest` | `IT` | the Spring context, or a real Postgres/Redis in a container | everything not under test |
 | Component | `*ComponentTest` | `CT` | the whole module | only other modules |
+| End-to-end | `*E2ETest` | `E2E` | the whole application, started as in production | only what lies outside the process (SMTP, blob storage) |
 
 **UT** is about the contract of a single class. No Spring context; collaborators are Mockito mocks.
 
@@ -166,6 +167,10 @@ what is cleaned between cases is the state, not the engine.
 
 **CT:** the scenarios that cannot be assembled out of UTs - the whole request path, a repeat under the same
 key, a bypass on a non-idempotent endpoint, a missing header, an error response.
+
+## E2E tests
+
+An E2E sits one level above a CT: the whole application, started the way it runs in production, driven only through its public HTTP API. It lives in its own Maven module at the repository root (`e2e`), which depends on the executable module's plain jar (so the Spring Boot executable is built with `<classifier>exec</classifier>`), and its classes end with `E2ETest` (`AppointmentCancelE2ETest`, `@DisplayName` prefix `E2E`). The real `Application` class and the real configuration are used, with Testcontainers for Postgres and Redis (`@Testcontainers(disabledWithoutDocker = true)`, one container set and one Spring context shared by every class); only what lies outside the process is replaced - SMTP by GreenMail behind a `@Primary` sender in a `@TestConfiguration` - and none of the application's own beans is mocked. Fixtures are built through the API like a user would (register, confirm with the code read from the mail, create the profile), never by writing to the database, with a thin client that keeps its own cookie jar and CSRF token; every test uses fresh identifiers (a unique email) instead of cleaning up, and every asynchronous effect is awaited with Awaitility - including "nothing was sent", which is `await().during(...)`, never a sleep - after filtering the mailbox by recipient and subject, since a registration letter lands in the same inbox. Put the response body into the assertion message (`assertThat(status).as(body)`) so a red run explains itself, and when a limit built for abuse (a per-address rate limiter) stands in the way, switch it by profile for the run rather than loosening it in production code. A negative case ("this mails nobody") passes just as well when the whole feature is dead, so it is always paired with the positive case of the same flow. Bugs found here follow the three rules below: a red E2E against the contract plus an entry in the owning module's `ISSUES.md`.
 
 ## Where an expectation comes from
 

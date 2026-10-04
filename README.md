@@ -35,7 +35,7 @@ loud, a `TODO`, and the name of a test that supposedly holds the statement down.
 order, the greps that find each kind of stale comment cheaply, and a verification step, because a broken
 `{@link}` compiles happily and only the javadoc tool catches it.
 
-**`test-style`** - three levels (`UT` / `IT` / `CT`), what is alive and what is stubbed at each, how a case is
+**`test-style`** - four levels (`UT` / `IT` / `CT` / `E2E`), what is alive and what is stubbed at each, how a case is
 named, what may be mocked and what may not, and what every level has to assert. Includes the rule most worth
 having: a green test never records a bug.
 
