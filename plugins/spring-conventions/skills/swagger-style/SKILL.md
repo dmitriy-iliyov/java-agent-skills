@@ -75,7 +75,12 @@ The interface is in the same package, named for the controller without its suffi
 | `@Operation`, `@ApiResponses`, the Swagger `@RequestBody` with the multipart `encoding` | the mapping annotations, `@ResponseStatus` |
 | `@Parameter`, `@ParameterObject` | `@PreAuthorize` |
 | the parameter constraints: `@Valid`, `@UUIDv7`, `@Positive`, `@Pattern` | the binding: `@PathVariable("id")`, `@RequestParam`, `@RequestPart`, `@ModelAttribute`, `@AuthenticationPrincipal` |
+| | `@Override` |
 | | the body: one call to the service |
+
+**`@Override` on every method that implements the interface** - without it, a method removed or renamed on the
+interface leaves the controller method compiling on its own, and the endpoint silently loses its documentation and its
+validation.
 
 **A task that only adds an endpoint to a controller that qualifies but still carries its annotations does not migrate
 it.** The migration is a change of its own, and it needs the tests below. The new method is annotated like its
