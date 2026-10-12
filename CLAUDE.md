@@ -57,6 +57,10 @@ reader would paste, and file contents that give the situation away, are stronger
 It also states what the skill is **not** for. A negative clause is the only thing that keeps two skills
 whose subjects share a word from answering for each other.
 
+The `description` is a plain YAML scalar, so it never contains `: ` (a colon followed by a space) - a strict
+parser such as js-yaml reads it as a new mapping entry, fails with `bad indentation of a mapping entry`, and
+the skill silently drops out of the skill list. A ` - ` says the same thing.
+
 **The body assumes it has already been chosen.** No restating of the description and no case for the skill's
 own existence - what to do, in the order it is done.
 
