@@ -16,7 +16,8 @@ one says *what the result must look like*.
 
 ## Unit of work
 
-One **module** at a time, in dependency order (a module nobody depends on goes last).
+One **module** at a time, in dependency order (a module nobody depends on goes last). The modules that test
+across the others - INF and E2E - come after all of them ([INF and E2E](#inf-and-e2e)).
 
 Inside a module, a **package is its own step** when it is a meaningful piece of the module - it has its own
 extension point, its own exceptions, its own value types. A package that is only utilities, containers or
@@ -39,6 +40,10 @@ Before opening a single test:
 The current contract is the source of truth. Never reconstruct it from an existing test - that test is
 exactly what is suspected of being out of date.
 
+Which sources make the contract, and what is left to the operator, is the `test-style` skill's ("Where an
+expectation comes from"). In this pass its questions are asked once per step, in one batch, before the step's
+first test is touched.
+
 ### 2. Run the module's tests
 
 ```bash
@@ -48,8 +53,11 @@ exactly what is suspected of being out of date.
 ./mvnw -pl <module> verify                 # tests + the jacoco report
 ```
 
-Read the numbers, not the impression: how many ran, how many failed, how many errored, and - separately -
-whether the test source root compiles at all.
+Read the numbers, not the impression: how many ran, how many failed, how many errored, how many were
+skipped, and - separately - whether the test source root compiles at all.
+
+A run whose Docker tests were skipped (`test-style`, "Where tests live and how they run") has not checked the
+module: it is reported as not run, never as green.
 
 **A test source root that does not compile is the first thing to fix.** Until it does, "red" and "green" mean
 nothing and no item below can be confirmed or closed.
@@ -70,17 +78,20 @@ While a large refactor is in flight, a module built without `-am` picks the neig
 
 ### 3. The gate
 
-Green **and** coverage above 95% → the step is done, move to the next package or module.
+Green **and** every instruction and branch the jacoco report shows as missed accounted for → the step is done,
+move to the next package or module.
 
 Green here means "nothing red that is not accounted for". A test left red on purpose - it asserts the
 contract, the code does not honour it yet, and the project's open-items document (a plan, a spec, a backlog -
 whatever this project keeps open work in) carries the item - does not hold the step open: it is the finding,
 handed over. What holds the step open is red nobody has explained.
 
-The 95% is a signal, not a target. When the rest of it is out of reach for a reason - a defensive branch an
-earlier validation already rules out, a `catch` that cannot fire, a type whose entire body is getters and a
-`toString` - the step closes below the number, with the reason written into that document and named in
-the report. **What must never happen is padding.** A test that calls a getter to watch it hand back what the
+No percentage is the gate - the `test-style` skill makes none a goal. The percentage only points at what to
+read: a module well below 95% usually has cases nobody wrote.
+Every missed line is either such a case (step 5) or out of reach for a reason - a defensive branch an earlier
+validation already rules out, a `catch` that cannot fire, a type whose entire body is getters and a `toString` -
+and then the reason is written into that document and named in the report. **What must never happen is
+padding.** A test that calls a getter to watch it hand back what the
 constructor was given asserts nothing, costs a file to keep in step with the type, and still moves the
 percentage - which is precisely why the percentage stops meaning anything once such tests are in it. A
 module at 91% whose missing nine points are named is in better shape than one at 96% where five of them are
@@ -154,19 +165,19 @@ Only once the module is green:
 - for a module that speaks to a real external system, an `IT` on Testcontainers
   per method of the store contract - both outcomes of every conditional write, the absent case, the nullable
   columns. The guarantees such a module exists for cannot be covered by a UT over a mocked driver, so a green
-  UT there says nothing about them.
+  UT there says nothing about them;
+- every concurrency guarantee the contract promises - an `MT`;
+- every controller - its `IT`.
+
+What each of these has to assert is the `test-style` skill's ("What each level has to assert"). PIT, which that
+skill names as the objective check, is run in this pass only where the operator asks for it.
 
 ### 6. Lock it in with a component test
 
-The step ends with a `CT` - the module working as a whole, or a package that is a meaningful piece of it (not
-a utility or container package). Rewrite the existing one against the new contract, fix it, or write it if
-there is none.
-
-The rule that makes the CT worth writing: **components of your own module are never mocked** - only the
-neighbouring modules are. A CT with its own module stubbed out asserts a guess instead of the wiring.
-
-The scenarios to keep: the whole path end to end, a repeat under the same key, the case that bypasses the
-mechanism entirely, a missing input, an error outcome.
+The step ends with the module's `CT` suite, where `test-style` gives the module one - a module it gives none
+ends at step 5, and the report says so. Which suites there are is the operator's answer from step 1. Rewrite the
+existing suite against the new contract, fix it, or write it if there is none; what it runs, where it enters and
+which scenarios it holds are `test-style`'s.
 
 ### 7. Report before moving on
 
@@ -179,6 +190,18 @@ fixed because it belongs to another module or needs a decision.
 Separately and by name: **the tests left red on purpose** - which case, which contract it holds to, which
 recorded item explains it. That list is the handover; without it a red suite is indistinguishable from an
 unfinished one.
+
+## INF and E2E
+
+The modules that test across the others come last, once every module they depend on has closed its steps -
+before that, their red is a module's red arriving late. Steps 1, 2, 4 and 7 apply to them unchanged; there is no
+coverage gate, since their jacoco measures the other modules from outside and says nothing about a step. How
+each is run is `test-style`'s ("Where tests live and how they run"); for INF every cell the CI runs is run here
+too, or the report names the ones that were not.
+
+A red E2E whose cause sits in a module is a finding for that module, not a repair of the E2E. A cause particular
+to this level is a CT fake that has drifted from the neighbour it stands for: it is corrected in the CT of the
+module that declares it.
 
 ## Where the findings go
 
