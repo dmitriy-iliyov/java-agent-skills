@@ -35,9 +35,9 @@ loud, a `TODO`, and the name of a test that supposedly holds the statement down.
 order, the greps that find each kind of stale comment cheaply, and a verification step, because a broken
 `{@link}` compiles happily and only the javadoc tool catches it.
 
-**`test-style`** - four levels (`UT` / `IT` / `CT` / `E2E`), what is alive and what is stubbed at each, how a case is
-named, what may be mocked and what may not, and what every level has to assert. Includes the rule most worth
-having: a green test never records a bug.
+**`test-style`** - six levels (`UT` / `MT` / `IT` / `CT` / `INF` / `E2E`), what is alive and what is stubbed at
+each, how a case is named, what may be mocked and what may not, and what every level has to assert. Includes the
+rule most worth having: a green test never records a bug.
 
 **`test-refactor`** - getting a module's suite back to green after a refactor, module by module, contract
 first. Sorts every red test into "the test is stale" and "the code is wrong", and treats them in opposite

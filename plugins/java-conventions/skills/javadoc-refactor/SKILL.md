@@ -76,8 +76,9 @@ nothing. What survives is a setter documenting a real constraint: a refused comb
 `null`, what is substituted when it is not called.
 
 In the same pass, take out the names that point outside the published API - a test class, a run, a recorded
-item. `grep -n "UnitTest\|IntegrationTest\|ComponentTest" -r src/main` finds most of them in one go. A
-sentence that leaned on a test for its authority is restated so that it stands on the construction instead.
+item. `grep -n "UnitTest\|MultiThreadTest\|IntegrationTest\|ComponentTest\|InfraTest\|EndToEndTest" -r src/main`
+finds most of them in one go. A sentence that leaned on a test for its authority is restated so that it stands on
+the construction instead.
 
 ## What the pass must not do
 
