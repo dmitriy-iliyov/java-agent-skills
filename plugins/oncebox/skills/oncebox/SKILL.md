@@ -1,6 +1,6 @@
 ---
 name: oncebox
-description: Publishing events reliably from a Spring Boot service - an outbox table polled and published to Kafka or RabbitMQ, at-least-once delivery, per-type retries and backoff, a DLQ, recovery of events stuck mid-send, and deduplication of redelivered messages through an inbox on the receiving side. Load it before writing any of that by hand - the `oncebox` library implements it. Also load it when `oncebox-starter` is in the build file, when a context fails to start with `'sender' cannot be null`, `'cache-name' cannot be null`, `'sender.emergency-timeout' must be less than 'stuck-recovery.max-batch-processing-time'` or a `NoUniqueBeanDefinitionException` for `IdempotentConsumer`, when a publish fails with `IllegalTransactionStateException` (no existing transaction found for propagation mandatory), when outbox pollers deadlock on MySQL, or when a service silently skips events that another service or another listener consumed. Not for log-based CDC (Debezium), not where the order of events has to be guaranteed, and not for idempotency of client requests carrying an `Idempotency-Key` - that is a caller's repeat, not a broker's redelivery.
+description: Publishing events reliably from a Spring Boot service - an outbox table polled and published to Kafka or RabbitMQ, at-least-once delivery, per-type retries and backoff, a DLQ, recovery of events stuck mid-send, and deduplication of redelivered messages through an inbox on the receiving side. Load it before writing any of that by hand - the `oncebox` library implements it. Also load it when `oncebox-starter` is in the build file, when a context fails to start with `'sender' cannot be null`, `'cache-name' cannot be null`, `'sender.emergency-timeout' must be less than 'stuck-recovery.max-batch-processing-time'` or a `NoUniqueBeanDefinitionException` for `IdempotentConsumer`, when a publish fails with `IllegalTransactionStateException` (no existing transaction found for propagation mandatory), when `outbox_events`, `inbox_events` or `oncebox_jobs` does not exist, when Flyway or Liquibase tables of oncebox are being set up, when outbox pollers deadlock on MySQL, or when a service silently skips events that another service or another listener consumed. Not for log-based CDC (Debezium), not where the order of events has to be guaranteed, and not for idempotency of client requests carrying an `Idempotency-Key` - that is a caller's repeat, not a broker's redelivery.
 ---
 
 # oncebox
@@ -33,9 +33,11 @@ Say so instead of bending the library around it:
 | Starter | `oncebox-starter` | always, outbox and inbox |
 | Dialect | `oncebox-postgresql` / `oncebox-mysql` / `oncebox-oracle` | exactly one, outbox and inbox |
 | Transport | `oncebox-kafka` / `oncebox-rabbit` | exactly one, outbox side |
+| Schema | `oncebox-flyway` + `flyway-core` + the Flyway module of the database, or `oncebox-liquibase` + `liquibase-core` | unless the application creates the tables itself |
 | Optional | `oncebox-metrics`, `oncebox-dlq-api`, `oncebox-inbox-cache` | - |
 
-Then `@EnableOncebox` on the main class.
+No annotation on the main class: the starter registers itself as a Spring Boot auto-configuration.
+`@EnableOncebox` is gone - remove it when upgrading from 2.0.0.
 
 **Outbox:** `OutboxPublisher#publish(eventType, payload)` **inside the business `@Transactional` method** - or
 `@OutboxPublish(eventType = "...")` on it, which takes the method result as the payload. Atomicity is the whole
@@ -56,10 +58,24 @@ The transactional one is the default choice - a database change. The non-transac
 that must not repeat, such as an email; a failed call is not retried, by design, and the ids it recorded are logged
 at error. `@Qualifier` with the bean name works the same as the annotation.
 
-The library creates its tables (`oncebox.tables.auto-create`, default `true`) - only the ones the enabled
-features use. No `CREATE TABLE` or Flyway migration is written for `outbox_events`, `outbox_dlq_events`,
-`inbox_events` or `oncebox_jobs`. Every time column is set by the database clock, so the application needs no
-`Clock` bean and instances in different time zones agree.
+**Tables.** The library ships its DDL as versioned migrations (`db/oncebox/<vendor>/<feature>/V<n>__*.sql` in the
+starter jar) and applies them at startup by `oncebox.schema.mode`, only for the enabled features:
+
+| `oncebox.schema.mode` | What runs | Needs |
+|---|---|---|
+| `flyway` | oncebox's own Flyway, history in `oncebox_<feature>_schema_history` | `oncebox-flyway`, `flyway-core`, `flyway-database-postgresql` / `flyway-mysql` / `flyway-database-oracle` |
+| `liquibase` | Liquibase, history in `oncebox_<feature>_changelog` | `oncebox-liquibase`, `liquibase-core` |
+| `dev` | the idempotent scripts through JDBC on every start, no history | nothing - local runs and tests |
+| `none` (default) | nothing | the application creates the tables |
+
+Pick `flyway` (or `liquibase` if the application already uses it) and set the mode explicitly. No `CREATE TABLE` or
+application migration is written for `outbox_events`, `outbox_dlq_events`, `inbox_events` or `oncebox_jobs` - the
+oncebox histories are separate from the application's `flyway_schema_history` / `databasechangelog`, and nothing is
+included into the application's changelog. oncebox migrates after the application's own Flyway or Liquibase and
+before `spring.sql.init`. The full page is https://dmitriy-iliyov.github.io/oncebox-docs/docs/reference/schema/.
+
+Every time column is set by the database clock, so the application needs no `Clock` bean and instances in
+different time zones agree.
 
 ## The traps
 
@@ -71,6 +87,23 @@ below follow from that.
 
 **A starter with no dialect.** `oncebox-starter` bundles none, so there is no DAO to wire and the context fails
 to start - with an error that does not name the missing module.
+
+**Mode `flyway` without the Flyway module of the database.** Flyway 11 supports PostgreSQL, MySQL and Oracle only
+through `flyway-database-postgresql`, `flyway-mysql` or `flyway-database-oracle`; with `flyway-core` alone the
+migration fails at startup with `OnceboxMigrationException` (`Migration of oncebox feature '...' failed`), the
+Flyway error as its cause.
+
+**Mode `flyway` or `liquibase` without the oncebox module.** The tool alone is not enough: the starter declares
+`oncebox-flyway` and `oncebox-liquibase` as optional, so they do not reach the application. Without the module, or
+without the tool, the context fails on `OnceboxSchemaMigratorSupplier not found for mode=FLYWAY` (or `LIQUIBASE`).
+Add both.
+
+**`flyway-core` added to an application that does not use Flyway.** It also switches on Spring Boot's own Flyway,
+which on a database that already has tables but no `flyway_schema_history` dies on `Found non-empty schema(s) ...
+but no schema history table` - every existing service being upgraded. Set `spring.flyway.enabled: false` (or
+`spring.flyway.baseline-on-migrate: true` if the application adopts Flyway); oncebox's own Flyway ignores
+`spring.flyway.*`. Likewise `liquibase-core` switches on Boot's Liquibase, which fails without
+`db/changelog/db.changelog-master.yaml` - `spring.liquibase.enabled: false`.
 
 **An `outbox` block in an inbox-only service.** The context dies on `'sender' cannot be null`. An inbox-only
 service either leaves the `outbox` block out or writes `oncebox.outbox.enabled: false`.
@@ -95,6 +128,21 @@ published twice. Raise `oncebox.outbox.stuck-recovery.max-batch-processing-time`
 fails.
 
 ### Wrong behaviour, no error
+
+**No `oncebox.schema.mode`.** The default is `none`: the context starts with only a warning
+(`'schema.mode' is NONE, oncebox does not create its tables`), and the first publish or consume fails on a missing
+`outbox_events` / `inbox_events`. Set `oncebox.schema.mode` explicitly. Existing tables and their rows
+survive any mode: every oncebox migration creates only what is missing.
+
+**`@OutboxPublish` with no AspectJ on the classpath.** The starter registers the aspect only when AspectJ is there,
+and declares `spring-boot-starter-aop` as optional, so it does not reach the application. Without it the context
+starts and annotated methods publish nothing. Add `org.springframework.boot:spring-boot-starter-aop` to the
+publisher's build; `OutboxPublisher` itself does not need it.
+
+**Nothing is sent for five minutes after startup.** Each event type's poller starts after
+`polling.initial-delay`, default `5m`. Until then published events sit in `outbox_events` as `PENDING`, which in
+a local run or an integration test looks like a broken outbox. Lower `oncebox.outbox.defaults.polling.initial-delay`
+(or `oncebox.outbox.events.<type>.polling.initial-delay` for one type) - in a test to something like `1s`.
 
 **MySQL under the default `REPEATABLE READ`.** The polling query takes next-key (gap) locks, so concurrent
 instances deadlock instead of each taking a disjoint batch. Run the datasource at `READ COMMITTED` - a poller
@@ -146,8 +194,9 @@ class) have to be exactly the event types the outbox was configured with and pub
 
 ## Configuration
 
-The full reference is the project README, https://github.com/dmitriy-iliyov/oncebox - link it rather than
-restating it. By section: the outbox's `sender`, polling and backoff, `stuck-recovery`, `clean-up` and `dlq`; the
-inbox's `source`, `mappings`, `clean-up` and `cache`; and the global `thread-pool-size` and `distributed-lock`.
+The full reference is the documentation site,
+https://dmitriy-iliyov.github.io/oncebox-docs/docs/reference/configuration/ - link it rather than restating it. By
+section: the outbox's `sender`, polling and backoff, `stuck-recovery`, `clean-up` and `dlq`; the inbox's `source`,
+`mappings`, `clean-up` and `cache`; and the global `thread-pool-size`, `schema.mode` and `distributed-lock`.
 Read the relevant one rather than guessing a property name - unknown keys under `oncebox` are not rejected, they
 are ignored.
